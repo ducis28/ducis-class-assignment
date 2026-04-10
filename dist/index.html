@@ -677,10 +677,16 @@ function handleRosterFile(file) {
         });
       });
 
+      // Update total student count
+      document.getElementById('total-students').value = rosterMap.size;
+      // Rebalance capacities
+      classNames.forEach(c => classCaps[c] = Math.ceil(rosterMap.size / classNames.length));
+      renderCapTable();
+
       const st = document.getElementById('roster-status');
       st.textContent = `✓ ${rosterMap.size} 名を読み込み${skipCount ? '（メールなし ' + skipCount + ' 件スキップ）' : ''}`;
       st.className = 'roster-status loaded';
-      log(`対象学生リスト: ${rosterMap.size} 名`, 'ok');
+      log(`対象学生リスト: ${rosterMap.size} 名 → 配属対象人数を更新しました`, 'ok');
 
       // Re-validate survey if already loaded
       if (rawStudents.length) validateSurvey();
