@@ -396,7 +396,14 @@
         <div class="file-name" id="file-name-display"></div>
       </div>
       <div style="margin-top:8px; font-size:11px; color:var(--text3);">
-        必要列: <span style="font-family:var(--mono);color:var(--accent)">学籍番号, 氏名, 第1希望, 第2希望, 第3希望</span>
+        <div style="font-size:11px;color:var(--text3);line-height:1.8;">
+        対応形式:<br>
+        <span style="font-family:var(--mono);color:var(--accent);font-size:10px;">
+        【通常】学籍番号, 氏名, 第1希望, 第2希望, 第3希望<br>
+        【Forms】ID, メール, 名前, 第N希望のクラスを…<br>
+        ※ クラス名は「クラス2：説明」形式も可
+        </span>
+      </div>
       </div>
       <button class="btn btn-secondary" style="margin-top:8px;" onclick="downloadTemplate()">📄 テンプレートをDL</button>
     </div>
@@ -531,6 +538,30 @@ function clearLog() {
 }
 
 /* ─────────────────────────────────────────
+   Column detection — supports:
+     • Simple template:  学籍番号, 氏名, 第1希望, 第2希望, 第3希望
+     • Microsoft Forms:  ID, メール, 名前, 第N希望のクラスを選んでください。
+   Class names like "クラス2：説明テキスト" are normalized to "クラス2"
+   for matching, keeping the full label for display.
+───────────────────────────────────────── */
+function detectColumns(headers) {
+  const find = (...keys) => headers.find(h => keys.some(k => String(h).includes(k))) || null;
+  return {
+    id:   find('学籍番号', 'メール', 'Email', 'email', 'mail'),
+    name: find('氏名', '名前', 'Name'),
+    p1:   find('第1希望', '第１希望', '希望1'),
+    p2:   find('第2希望', '第２希望', '希望2'),
+    p3:   find('第3希望', '第３希望', '希望3'),
+  };
+}
+
+// Normalize "クラス2：英語講読" → "クラス2"  (strip everything after ：/:/＊ etc.)
+function normalizeClassName(raw) {
+  if (!raw) return '';
+  return String(raw).split(/[：:＊\*]/)[0].trim();
+}
+
+/* ─────────────────────────────────────────
    File handling
 ───────────────────────────────────────── */
 function handleFile(file) {
@@ -542,15 +573,56 @@ function handleFile(file) {
       const wb = XLSX.read(e.target.result, { type: 'array' });
       const ws = wb.Sheets[wb.SheetNames[0]];
       const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
-      rawStudents = rows.map((r, i) => ({
-        id:   String(r['学籍番号'] || r['ID'] || r['id'] || (i + 1)),
-        name: String(r['氏名'] || r['名前'] || r['Name'] || ''),
-        p1:   String(r['第1希望'] || r['第１希望'] || r['希望1'] || ''),
-        p2:   String(r['第2希望'] || r['第２希望'] || r['希望2'] || ''),
-        p3:   String(r['第3希望'] || r['第３希望'] || r['希望3'] || ''),
-      }));
+      if (!rows.length) { log('データが空です', 'err'); return; }
+
+      const cols = detectColumns(Object.keys(rows[0]));
       clearLog();
+      log(`列を検出: ID="${cols.id}" 名前="${cols.name}" 第1="${cols.p1}"`, 'info');
+
+      if (!cols.p1) { log('⚠ 第1希望列が見つかりません。列名を確認してください', 'warn'); }
+
+      rawStudents = rows.map((r, i) => {
+        const p1raw = String(cols.p1 ? r[cols.p1] : '');
+        const p2raw = String(cols.p2 ? r[cols.p2] : '');
+        const p3raw = String(cols.p3 ? r[cols.p3] : '');
+        return {
+          id:   String(cols.id   ? r[cols.id]   : (i + 1)),
+          name: String(cols.name ? r[cols.name] : ''),
+          p1:   normalizeClassName(p1raw),
+          p2:   normalizeClassName(p2raw),
+          p3:   normalizeClassName(p3raw),
+          p1label: p1raw,
+          p2label: p2raw,
+          p3label: p3raw,
+        };
+      });
+
       log(`✓ ${rawStudents.length} 件を読み込みました`, 'ok');
+
+      // Auto-suggest class names if not yet configured
+      const detectedClasses = [...new Set(
+        rawStudents.flatMap(s => [s.p1, s.p2, s.p3]).filter(Boolean)
+      )].sort((a, b) => {
+        const na = parseInt(a.replace(/\D/g,'')) || 0;
+        const nb = parseInt(b.replace(/\D/g,'')) || 0;
+        return na - nb;
+      });
+      if (detectedClasses.length > 0) {
+        log(`検出されたクラス: ${detectedClasses.join(', ')}`, 'info');
+        // If detected classes differ from current config, offer to update
+        const same = detectedClasses.length === classNames.length &&
+          detectedClasses.every((c, i) => c === classNames[i]);
+        if (!same) {
+          document.getElementById('num-classes').value = detectedClasses.length;
+          classNames = detectedClasses;
+          classCaps = {};
+          const total = parseInt(document.getElementById('total-students').value) || 290;
+          classNames.forEach(c => classCaps[c] = Math.ceil(total / classNames.length));
+          renderCapTable();
+          log(`→ クラス設定を自動更新しました（${detectedClasses.length}クラス）`, 'ok');
+        }
+      }
+
       document.getElementById('run-btn').disabled = false;
     } catch(err) {
       clearLog();
@@ -575,20 +647,14 @@ dz.addEventListener('drop', e => {
 function downloadTemplate() {
   const n = parseInt(document.getElementById('num-classes').value) || 8;
   rebuildCapTable();
-  const classes = classNames.join('、');
   const ws = XLSX.utils.aoa_to_sheet([
     ['学籍番号', '氏名', '第1希望', '第2希望', '第3希望'],
-    ['S001', '山田 太郎', classNames[0], classNames[1 % n], classNames[2 % n]],
-    ['S002', '鈴木 花子', classNames[1 % n], classNames[0], classNames[2 % n]],
+    ['S001', '山田 太郎', classNames[0]||'', classNames[1%n]||'', classNames[2%n]||''],
+    ['S002', '鈴木 花子', classNames[1%n]||'', classNames[0]||'', classNames[2%n]||''],
   ]);
-  // Add note row
-  ws['!cols'] = [12,14,12,12,12].map(w=>({wch:w}));
-  const note = XLSX.utils.aoa_to_sheet([
-    ['※ クラス名候補:', classes],
-  ]);
+  ws['!cols'] = [13,16,14,14,14].map(w=>({wch:w}));
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, '学生データ');
-  XLSX.utils.book_append_sheet(wb, note, 'クラス名一覧');
   XLSX.writeFile(wb, 'class_assignment_template.xlsx');
 }
 
@@ -823,7 +889,7 @@ function buildTable(cls) {
 
   return `<table>
     <thead><tr>
-      <th>#</th><th>学籍番号</th><th>氏名</th>
+      <th>#</th><th>ID / メール</th><th>氏名</th>
       <th>第1希望</th><th>第2希望</th><th>第3希望</th>
       <th>配属クラス</th><th>配属方法</th>
     </tr></thead>
@@ -832,9 +898,9 @@ function buildTable(cls) {
         <td class="mono" style="color:var(--text3)">${i+1}</td>
         <td class="mono">${s.id}</td>
         <td>${s.name}</td>
-        <td class="mono" style="color:var(--text2)">${s.p1}</td>
-        <td class="mono" style="color:var(--text2)">${s.p2}</td>
-        <td class="mono" style="color:var(--text2)">${s.p3}</td>
+        <td class="mono" style="color:var(--text2)" title="${s.p1label||''}">${s.p1}</td>
+        <td class="mono" style="color:var(--text2)" title="${s.p2label||''}">${s.p2}</td>
+        <td class="mono" style="color:var(--text2)" title="${s.p3label||''}">${s.p3}</td>
         <td class="mono" style="color:var(--accent);font-weight:500">${s.assigned || '—'}</td>
         <td>${methodBadge(s.method)}</td>
       </tr>`).join('')}
@@ -848,11 +914,11 @@ function buildTable(cls) {
 function downloadResult() {
   // Sheet 1: Full result
   const rows = assignResult.map(s => ({
-    '学籍番号': s.id,
+    'ID/メール': s.id,
     '氏名': s.name,
-    '第1希望': s.p1,
-    '第2希望': s.p2,
-    '第3希望': s.p3,
+    '第1希望': s.p1label || s.p1,
+    '第2希望': s.p2label || s.p2,
+    '第3希望': s.p3label || s.p3,
     '配属クラス': s.assigned || '',
     '配属方法': s.method,
   }));
