@@ -706,12 +706,19 @@ rdzEl.addEventListener('drop', e => {
 });
 
 function downloadRosterTemplate() {
-  const ws = XLSX.utils.aoa_to_sheet([
+  const rows = [
     ['学籍番号', 'メールアドレス', '氏名'],
-    ['2024001', 'yamada.taro.24@example.ac.jp', '山田 太郎'],
-    ['2024002', 'suzuki.hanako.24@example.ac.jp', '鈴木 花子'],
-  ]);
-  ws['!cols'] = [12, 30, 16].map(w => ({ wch: w }));
+    ['XXXXYYZ001', 'xxxx0001@example.ac.jp', '山田 太郎'],
+    ['XXXXYYZ002', 'xxxx0002@example.ac.jp', '鈴木 花子'],
+    ['XXXXYYZ003', 'xxxx0003@example.ac.jp', '田中 健二'],
+    ['XXXXYYZ005', 'xxxx0005@example.ac.jp', 'パク ジュンホ'],
+    ['XXXXYYZ006', 'xxxx0006@example.ac.jp', '中村 結衣'],
+    ['XXXXYYZ007', 'xxxx0007@example.ac.jp', 'チェン シャオリン'],
+    ['XXXXYYZ008', 'xxxx0008@example.ac.jp', '佐藤 美咲'],
+    ['XXXXYYZ010', 'xxxx0010@example.ac.jp', '木村 エマ'],
+  ];
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  ws['!cols'] = [14, 36, 18].map(w => ({ wch: w }));
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, '対象学生リスト');
   XLSX.writeFile(wb, 'roster_template.xlsx');
@@ -931,9 +938,9 @@ function downloadTemplate() {
   const n = parseInt(document.getElementById('num-classes').value) || 8;
   rebuildCapTable();
   const ws = XLSX.utils.aoa_to_sheet([
-    ['学籍番号', '氏名', '第1希望', '第2希望', '第3希望'],
-    ['S001', '山田 太郎', classNames[0]||'', classNames[1%n]||'', classNames[2%n]||''],
-    ['S002', '鈴木 花子', classNames[1%n]||'', classNames[0]||'', classNames[2%n]||''],
+    ['メール', '第1希望', '第2希望', '第3希望'],
+    ['xxxx0001@example.ac.jp', classNames[0]||'', classNames[1%n]||'', classNames[2%n]||''],
+    ['xxxx0002@example.ac.jp', classNames[1%n]||'', classNames[0]||'', classNames[2%n]||''],
   ]);
   ws['!cols'] = [13,16,14,14,14].map(w=>({wch:w}));
   const wb = XLSX.utils.book_new();
