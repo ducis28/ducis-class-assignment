@@ -886,6 +886,14 @@ function handleFile(file) {
         };
       });
 
+      // 名簿にないメールは除外
+      if (rosterMap.size > 0) {
+        const before = rawStudents.length;
+        rawStudents = rawStudents.filter(s => rosterMap.has(s.id.trim().toLowerCase()));
+        const removed = before - rawStudents.length;
+        if (removed > 0) log(`名簿外の学生 ${removed} 名を除外しました`, 'warn');
+      }
+
       log(`✓ ${rawStudents.length} 件を読み込みました`, 'ok');
 
       // Auto-suggest class names if not yet configured
@@ -970,6 +978,11 @@ function runAssignment() {
 
   // Working copy — start with survey respondents
   let students = rawStudents.map(s => ({...s, assigned: null, method: ''}));
+  
+  // 名簿がある場合、名簿外は配属対象から除く（二重チェック）
+  if (rosterMap.size > 0) {
+    students = students.filter(s => rosterMap.has(s.id.trim().toLowerCase()));
+  }
 
   // Add roster-only students (in roster but no survey response)
   if (rosterMap.size > 0) {
