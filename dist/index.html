@@ -1006,72 +1006,42 @@ function runAssignment() {
   const remaining = {};
   classNames.forEach(c => remaining[c] = classCaps[c] || 0);
 
-  // STEP 2: Assign everyone to 1st choice
-  log('STEP 1: 第1希望で仮配属...', 'info');
-  const firstBuckets = {}; // cls -> [student]
-  classNames.forEach(c => firstBuckets[c] = []);
-
-  const noValid1st = [];
-  students.forEach(s => {
-    if (validClasses.has(s.p1)) {
-      firstBuckets[s.p1].push(s);
-    } else {
-      noValid1st.push(s); // no valid 1st choice
-    }
-  });
-
-  // STEP 3: Lottery for oversubscribed classes
-  log('STEP 2: 定員超過クラスで抽選...', 'info');
-  const unassigned = [...noValid1st];
-
-  classNames.forEach(cls => {
-    const bucket = firstBuckets[cls];
-    const cap = remaining[cls];
-    if (bucket.length <= cap) {
-      // All confirmed
-      bucket.forEach(s => { s.assigned = cls; s.method = '第1希望'; });
-      remaining[cls] -= bucket.length;
-    } else {
-      // Lottery
-      const shuffled = shuffle(bucket, rng);
-      shuffled.slice(0, cap).forEach(s => { s.assigned = cls; s.method = '第1希望（抽選）'; });
-      remaining[cls] = 0;
-      shuffled.slice(cap).forEach(s => unassigned.push(s));
-    }
-  });
-
+  // STEP 1: 1st choice assignment
+  log('STEP 1: 第1希望で配属・抽選', 'info');
+  console.log(remaining['クラス1'], remaining['クラス2'], remaining['クラス3']);
+  let unassigned = tryAssign(students, 1, validClasses, remaining, rng);
+  console.log(unassigned);
   log(`  → 確定: ${students.filter(s=>s.assigned).length} 名 / 未確定: ${unassigned.length} 名`, '');
 
-  // STEP 4: 2nd and 3rd choice for lottery losers
-  log('STEP 3: 第2・第3希望で配属...', 'info');
-  const stillUnassigned = [];
+  // STEP 2: 2nd choice assignment
+  log('STEP 2: 第2希望で配属・抽選', 'info');
+  console.log(remaining['クラス1'], remaining['クラス2'], remaining['クラス3']);
+  unassigned = tryAssign(unassigned, 2, validClasses, remaining, rng);
+  console.log(unassigned);
+  console.log(students[0]);
+  console.log(students[1]);
+  log(`  → 未確定: ${unassigned.length} 名`, '');
 
-  unassigned.forEach(s => {
-    const choices = [s.p2, s.p3].filter(p => validClasses.has(p));
-    let placed = false;
-    for (const cls of choices) {
-      if (remaining[cls] > 0) {
-        s.assigned = cls;
-        s.method = cls === s.p2 ? '第2希望' : '第3希望';
-        remaining[cls]--;
-        placed = true;
-        break;
-      }
-    }
-    if (!placed) stillUnassigned.push(s);
+  // STEP 3: 3rd choice assignment
+  log('STEP 3: 第3希望で配属・抽選', 'info');
+  console.log(remaining['クラス1'], remaining['クラス2'], remaining['クラス3']);
+  unassigned = tryAssign(unassigned, 3, validClasses, remaining, rng);
+  console.log(unassigned);
+  console.log(students[0]);
+  console.log(students[1]);
+  log(`  → 未確定: ${unassigned.length} 名`, '');
+
+  students.forEach(s => {
+    console.log(s.id, s.method);
   });
 
-  log(`  → 確定: ${students.filter(s=>s.assigned).length} 名 / 未確定: ${stillUnassigned.length} 名`, '');
-
-  // STEP 5: Random assignment for remaining (preference losers + no-response)
+  // STEP 4: Random assignment for remaining (preference losers + no-response)
   // Separate into two groups so we can label them differently
-  const prefLosers    = stillUnassigned.filter(s => s.p1 || s.p2 || s.p3);
-  const noResponders  = stillUnassigned.filter(s => !s.p1 && !s.p2 && !s.p3);
-
-  // Also collect roster-only students who were added but have no preferences
-  // (they start with empty p1/p2/p3 and were never pushed to unassigned above)
-  const notYetAssigned = students.filter(s => !s.assigned && !s.p1 && !s.p2 && !s.p3 && !prefLosers.includes(s) && !noResponders.includes(s));
-  const allRandom = shuffle([...prefLosers, ...noResponders, ...notYetAssigned], rng);
+  const prefLosers    = unassigned.filter(s => s.p1 || s.p2 || s.p3);
+  const noResponders  = unassigned.filter(s => !s.p1 && !s.p2 && !s.p3);
+  console.log(prefLosers.length, prefLosers);
+  console.log(noResponders.length, noResponders);
+  const allRandom = shuffle([...prefLosers, ...noResponders], rng);
 
   if (allRandom.length > 0) {
     log(`STEP 4: ${allRandom.length} 名をランダム配属（希望なし・未回答含む）...`, 'info');
@@ -1099,6 +1069,47 @@ function runAssignment() {
 
   assignResult = students;
   renderResults();
+}
+
+/**
+ * 学生リストを指定した希望順位で配属を試みる。
+ * 配属できなかった学生を返す。
+ * @param {Array}  candidates - 配属を試みる学生の配列
+ * @param {number} pref       - 希望順位 (1, 2, 3)
+ * @param {Set}    validClasses
+ * @param {Object} remaining  - クラスごとの残余定員（破壊的に更新）
+ * @param {Object} rng  - 擬似乱数生成器
+ * @returns {Array} 配属できなかった学生
+ */
+function tryAssign(candidates, pref, validClasses, remaining, rng) {
+  const prefKey = ['', 'p1', 'p2', 'p3'][pref];
+  const methodLabel = `第${pref}希望`;
+  const unplaced = [];
+
+  const buckets = {};
+  const noChoice = [];
+  candidates.forEach(s => {
+    const cls = s[prefKey];
+    if (validClasses.has(cls)) {
+      (buckets[cls] ??= []).push(s);
+    } else {
+      noChoice.push(s);
+    }
+  });
+
+  Object.entries(buckets).forEach(([cls, group]) => {
+    const cap = remaining[cls];
+    const shuffled = shuffle(group, rng);
+    shuffled.slice(0, cap).forEach(s => {
+      s.assigned = cls;
+      s.method = group.length > cap ? `${methodLabel}（抽選）` : methodLabel;
+      console.log(s.id.slice(0,8), s.method);
+    });
+    remaining[cls] -= Math.min(group.length, cap);
+    shuffled.slice(cap).forEach(s => unplaced.push(s));
+  });
+
+  return [...unplaced, ...noChoice];
 }
 
 function countAssigned(students, cls) {
@@ -1137,8 +1148,8 @@ function renderResults() {
 
   const total = assignResult.length;
   const firstPref = (methods['第1希望'] || 0) + (methods['第1希望（抽選）'] || 0);
-  const second = methods['第2希望'] || 0;
-  const third = methods['第3希望'] || 0;
+  const second = (methods['第2希望'] || 0) + (methods['第2希望（抽選）'] || 0);
+  const third = (methods['第3希望'] || 0) + (methods['第3希望（抽選）'] || 0);
   const rand = (methods['ランダム配属'] || 0) + (methods['ランダム配属（定員超過）'] || 0);
   const noResp = (methods['ランダム配属（未回答）'] || 0) + (methods['ランダム配属（未回答・定員超過）'] || 0);
 
@@ -1221,10 +1232,10 @@ function buildTable(cls) {
   if (!rows.length) return '<div class="empty"><div class="icon">🔍</div><p>データがありません</p></div>';
 
   const methodBadge = m => {
-    if (m === '第1希望') return '<span class="badge badge-1">第1希望</span>';
-    if (m === '第1希望（抽選）') return '<span class="badge badge-1">第1希望<span style="opacity:.6">（抽選）</span></span>';
-    if (m === '第2希望') return '<span class="badge badge-2">第2希望</span>';
-    if (m === '第3希望') return '<span class="badge badge-3">第3希望</span>';
+    if (m.startsWith('第')) {
+      if (m.includes('抽選')) return `<span class="badge badge-${m[1]}">第${m[1]}希望<span style="opacity:.6">（抽選）</span></span>`;
+      else return `<span class="badge badge-${m[1]}">第${m[1]}希望</span>`;
+    }
     if (m.includes('未回答')) return '<span class="badge badge-r">未回答</span>';
     return '<span class="badge badge-r">ランダム</span>';
   };
