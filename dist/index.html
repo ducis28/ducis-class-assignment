@@ -663,7 +663,7 @@ function handleRosterFile(file) {
       const findCol = (...keys) => headers.find(h => keys.some(k => String(h).includes(k))) || null;
       const colId   = findCol('学籍番号', '学生ID', 'ID', 'id');
       const colMail = findCol('メール', 'Email', 'email', 'mail');
-      const colName = findCol('表示用氏名', '氏名', '名前', 'Name');
+      const colName = findCol('表示用氏名') || findCol('氏名', '名前', 'Name');
 
       rosterMap = new Map();
       let skipCount = 0;
