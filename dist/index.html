@@ -968,8 +968,26 @@ function runAssignment() {
   });
   if (invalidCount > 0) log(`⚠ 不明なクラス名が ${invalidCount} 件あります（無視して続行）`, 'warn');
 
-  // Working copy
+  // Working copy — start with survey respondents
   let students = rawStudents.map(s => ({...s, assigned: null, method: ''}));
+
+  // Add roster-only students (in roster but no survey response)
+  if (rosterMap.size > 0) {
+    const respondedEmails = new Set(students.map(s => s.id.trim().toLowerCase()));
+    let noResponseCount = 0;
+    rosterMap.forEach((r, email) => {
+      if (!respondedEmails.has(email)) {
+        students.push({
+          id: email, name: r.name,
+          p1: '', p2: '', p3: '',
+          p1label: '', p2label: '', p3label: '',
+          assigned: null, method: '',
+        });
+        noResponseCount++;
+      }
+    });
+    if (noResponseCount > 0) log(`未回答の学生 ${noResponseCount} 名をランダム配属対象に追加`, 'warn');
+  }
 
   // Remaining capacity
   const remaining = {};
@@ -1032,26 +1050,32 @@ function runAssignment() {
 
   log(`  → 確定: ${students.filter(s=>s.assigned).length} 名 / 未確定: ${stillUnassigned.length} 名`, '');
 
-  // STEP 5: Random assignment for remaining
-  if (stillUnassigned.length > 0) {
-    log('STEP 4: 残余学生をランダム配属...', 'info');
-    const shuffledRemaining = shuffle(stillUnassigned, rng);
-    shuffledRemaining.forEach(s => {
-      // Find class with remaining capacity
+  // STEP 5: Random assignment for remaining (preference losers + no-response)
+  // Separate into two groups so we can label them differently
+  const prefLosers    = stillUnassigned.filter(s => s.p1 || s.p2 || s.p3);
+  const noResponders  = stillUnassigned.filter(s => !s.p1 && !s.p2 && !s.p3);
+
+  // Also collect roster-only students who were added but have no preferences
+  // (they start with empty p1/p2/p3 and were never pushed to unassigned above)
+  const notYetAssigned = students.filter(s => !s.assigned && !s.p1 && !s.p2 && !s.p3 && !prefLosers.includes(s) && !noResponders.includes(s));
+  const allRandom = shuffle([...prefLosers, ...noResponders, ...notYetAssigned], rng);
+
+  if (allRandom.length > 0) {
+    log(`STEP 4: ${allRandom.length} 名をランダム配属（希望なし・未回答含む）...`, 'info');
+    allRandom.forEach(s => {
+      const isNoResponse = !s.p1 && !s.p2 && !s.p3;
       const available = classNames.filter(c => remaining[c] > 0);
       if (available.length > 0) {
-        // Pick randomly from available
         const cls = available[Math.floor(rng() * available.length)];
         s.assigned = cls;
-        s.method = 'ランダム配属';
+        s.method = isNoResponse ? 'ランダム配属（未回答）' : 'ランダム配属';
         remaining[cls]--;
       } else {
-        // All classes full - assign to least overloaded
         const minCls = classNames.reduce((a, b) =>
           (classCaps[a] - countAssigned(students, a)) > (classCaps[b] - countAssigned(students, b)) ? a : b
         );
         s.assigned = minCls;
-        s.method = 'ランダム配属（定員超過）';
+        s.method = isNoResponse ? 'ランダム配属（未回答・定員超過）' : 'ランダム配属（定員超過）';
       }
     });
   }
@@ -1102,7 +1126,8 @@ function renderResults() {
   const firstPref = (methods['第1希望'] || 0) + (methods['第1希望（抽選）'] || 0);
   const second = methods['第2希望'] || 0;
   const third = methods['第3希望'] || 0;
-  const rand = methods['ランダム配属'] || 0;
+  const rand = (methods['ランダム配属'] || 0) + (methods['ランダム配属（定員超過）'] || 0);
+  const noResp = (methods['ランダム配属（未回答）'] || 0) + (methods['ランダム配属（未回答・定員超過）'] || 0);
 
   // Will re-insert validation panel after innerHTML set
   area.innerHTML = `
@@ -1121,8 +1146,8 @@ function renderResults() {
         <div class="lbl">第2・第3希望に配属</div>
       </div>
       <div class="stat-card warn">
-        <div class="val">${rand}</div>
-        <div class="lbl">ランダム配属</div>
+        <div class="val">${rand + noResp}</div>
+        <div class="lbl">ランダム配属${noResp > 0 ? `（うち未回答 ${noResp} 名）` : ''}</div>
       </div>
     </div>
 
@@ -1187,6 +1212,7 @@ function buildTable(cls) {
     if (m === '第1希望（抽選）') return '<span class="badge badge-1">第1希望<span style="opacity:.6">（抽選）</span></span>';
     if (m === '第2希望') return '<span class="badge badge-2">第2希望</span>';
     if (m === '第3希望') return '<span class="badge badge-3">第3希望</span>';
+    if (m.includes('未回答')) return '<span class="badge badge-r">未回答</span>';
     return '<span class="badge badge-r">ランダム</span>';
   };
 
