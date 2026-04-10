@@ -661,9 +661,9 @@ function handleRosterFile(file) {
 
       const headers = Object.keys(rows[0]);
       const findCol = (...keys) => headers.find(h => keys.some(k => String(h).includes(k))) || null;
-      const colId   = findCol('学籍番号', 'ID', 'id');
+      const colId   = findCol('学籍番号', '学生ID', 'ID', 'id');
       const colMail = findCol('メール', 'Email', 'email', 'mail');
-      const colName = findCol('氏名', '名前', 'Name');
+      const colName = findCol('表示用氏名', '氏名', '名前', 'Name');
 
       rosterMap = new Map();
       let skipCount = 0;
@@ -1171,6 +1171,13 @@ function showTab(cls, el) {
   document.getElementById('result-table-wrap').innerHTML = buildTable(cls);
 }
 
+// Look up roster entry by survey record's id (email for Forms, fallback to name match)
+function getRoster(s) {
+  const email = s.id.trim().toLowerCase();
+  if (rosterMap.has(email)) return rosterMap.get(email);
+  return null;
+}
+
 function buildTable(cls) {
   const rows = cls === 'all' ? assignResult : assignResult.filter(s => s.assigned === cls);
   if (!rows.length) return '<div class="empty"><div class="icon">🔍</div><p>データがありません</p></div>';
@@ -1185,21 +1192,22 @@ function buildTable(cls) {
 
   return `<table>
     <thead><tr>
-      <th>#</th><th>ID / メール</th><th>氏名</th>
+      <th>#</th><th>学籍番号</th><th>メールアドレス</th><th>氏名</th>
       <th>第1希望</th><th>第2希望</th><th>第3希望</th>
       <th>配属クラス</th><th>配属方法</th>
     </tr></thead>
     <tbody>
-      ${rows.map((s, i) => `<tr>
+      ${rows.map((s, i) => { const r = getRoster(s); return `<tr>
         <td class="mono" style="color:var(--text3)">${i+1}</td>
-        <td class="mono">${s.id}</td>
-        <td>${s.name}</td>
+        <td class="mono" style="color:var(--accent)">${r ? r.studentId : s.id}</td>
+        <td class="mono" style="color:var(--text2);font-size:11px">${r ? r.email : s.id}</td>
+        <td>${r ? r.name : s.name}</td>
         <td class="mono" style="color:var(--text2)" title="${s.p1label||''}">${s.p1}</td>
         <td class="mono" style="color:var(--text2)" title="${s.p2label||''}">${s.p2}</td>
         <td class="mono" style="color:var(--text2)" title="${s.p3label||''}">${s.p3}</td>
         <td class="mono" style="color:var(--accent);font-weight:500">${s.assigned || '—'}</td>
         <td>${methodBadge(s.method)}</td>
-      </tr>`).join('')}
+      </tr>`; }).join('')}
     </tbody>
   </table>`;
 }
@@ -1209,17 +1217,21 @@ function buildTable(cls) {
 ───────────────────────────────────────── */
 function downloadResult() {
   // Sheet 1: Full result
-  const rows = assignResult.map(s => ({
-    'ID/メール': s.id,
-    '氏名': s.name,
-    '第1希望': s.p1label || s.p1,
-    '第2希望': s.p2label || s.p2,
-    '第3希望': s.p3label || s.p3,
-    '配属クラス': s.assigned || '',
-    '配属方法': s.method,
-  }));
+  const rows = assignResult.map(s => {
+    const r = getRoster(s);
+    return {
+      '学籍番号':      r ? r.studentId : s.id,
+      'メールアドレス': r ? r.email     : s.id,
+      '氏名':          r ? r.name       : s.name,
+      '第1希望': s.p1label || s.p1,
+      '第2希望': s.p2label || s.p2,
+      '第3希望': s.p3label || s.p3,
+      '配属クラス': s.assigned || '',
+      '配属方法': s.method,
+    };
+  });
   const ws1 = XLSX.utils.json_to_sheet(rows);
-  ws1['!cols'] = [12,16,12,12,12,12,16].map(w=>({wch:w}));
+  ws1['!cols'] = [14,30,16,14,14,14,12,16].map(w=>({wch:w}));
 
   // Sheet 2: Class summary
   const summary = classNames.map(c => {
@@ -1243,13 +1255,17 @@ function downloadResult() {
   XLSX.utils.book_append_sheet(wb, ws2, 'クラス別集計');
   classNames.forEach(c => {
     const members = assignResult.filter(s => s.assigned === c);
-    const ws = XLSX.utils.json_to_sheet(members.map((s, i) => ({
-      'No': i + 1,
-      '学籍番号': s.id,
-      '氏名': s.name,
-      '配属方法': s.method,
-    })));
-    ws['!cols'] = [6,12,16,16].map(w=>({wch:w}));
+    const ws = XLSX.utils.json_to_sheet(members.map((s, i) => {
+      const r = getRoster(s);
+      return {
+        'No': i + 1,
+        '学籍番号':      r ? r.studentId : s.id,
+        'メールアドレス': r ? r.email     : s.id,
+        '氏名':          r ? r.name       : s.name,
+        '配属方法': s.method,
+      };
+    }));
+    ws['!cols'] = [6,14,30,16,16].map(w=>({wch:w}));
     // Sanitize sheet name (max 31 chars, no special chars)
     const sheetName = c.replace(/[\\\/\?\*\[\]:]/g, '').substring(0, 31);
     XLSX.utils.book_append_sheet(wb, ws, sheetName);
