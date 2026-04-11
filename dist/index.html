@@ -200,7 +200,7 @@
   /* ── Stats bar ── */
   .stats-bar {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(5, 1fr);
     gap: 12px;
     margin-bottom: 24px;
   }
@@ -1141,8 +1141,8 @@ function renderResults() {
     const cs = classStats[s.assigned];
     cs.count++;
     if (s.method.includes('第1希望')) cs.p1++;
-    else if (s.method === '第2希望') cs.p2++;
-    else if (s.method === '第3希望') cs.p3++;
+    else if (s.method.includes('第2希望')) cs.p2++;
+    else if (s.method.includes('第3希望')) cs.p3++;
     else cs.rand++;
   });
 
@@ -1166,8 +1166,12 @@ function renderResults() {
         <div class="lbl">第1希望に配属</div>
       </div>
       <div class="stat-card">
-        <div class="val">${second + third}</div>
-        <div class="lbl">第2・第3希望に配属</div>
+        <div class="val">${second}</div>
+        <div class="lbl">第2希望に配属</div>
+      </div>
+      <div class="stat-card">
+        <div class="val">${third}</div>
+        <div class="lbl">第3希望に配属</div>
       </div>
       <div class="stat-card warn">
         <div class="val">${rand + noResp}</div>
