@@ -1005,6 +1005,27 @@ function runAssignment() {
   // Remaining capacity
   const remaining = {};
   classNames.forEach(c => remaining[c] = classCaps[c] || 0);
+  const totalRemaining = classNames.reduce((s, c) => s + remaining[c], 0);
+
+  if (totalRemaining > students.length) {
+    // Sort classes by popularity
+    const popularity = {};
+    const L = students.length + 1;
+    students.forEach(s => {
+      if (validClasses.has(s.p1)) popularity[s.p1] = (popularity[s.p1] || 0) + L * L;
+      if (validClasses.has(s.p2)) popularity[s.p2] = (popularity[s.p2] || 0) + L;
+      if (validClasses.has(s.p3)) popularity[s.p3] = (popularity[s.p3] || 0) + 1;
+    });
+    const sortedClasses = shuffle([...classNames], rng)
+      .sort((a, b) => (popularity[a] || 0) - (popularity[b] || 0));
+
+    // Reduce capacity of most popular classes first
+    const excess = totalRemaining - students.length;
+    for (let i = 0; i < excess; i++) {
+      const c = sortedClasses[i % sortedClasses.length];
+      if (remaining[c] > 0) remaining[c]--;
+    }
+  }
 
   // STEP 1: 1st choice assignment
   log('STEP 1: 第1希望で配属・抽選', 'info');
