@@ -1008,39 +1008,23 @@ function runAssignment() {
 
   // STEP 1: 1st choice assignment
   log('STEP 1: 第1希望で配属・抽選', 'info');
-  console.log(remaining['クラス1'], remaining['クラス2'], remaining['クラス3']);
   let unassigned = tryAssign(students, 1, validClasses, remaining, rng);
-  console.log(unassigned);
   log(`  → 確定: ${students.filter(s=>s.assigned).length} 名 / 未確定: ${unassigned.length} 名`, '');
 
   // STEP 2: 2nd choice assignment
   log('STEP 2: 第2希望で配属・抽選', 'info');
-  console.log(remaining['クラス1'], remaining['クラス2'], remaining['クラス3']);
   unassigned = tryAssign(unassigned, 2, validClasses, remaining, rng);
-  console.log(unassigned);
-  console.log(students[0]);
-  console.log(students[1]);
   log(`  → 未確定: ${unassigned.length} 名`, '');
 
   // STEP 3: 3rd choice assignment
   log('STEP 3: 第3希望で配属・抽選', 'info');
-  console.log(remaining['クラス1'], remaining['クラス2'], remaining['クラス3']);
   unassigned = tryAssign(unassigned, 3, validClasses, remaining, rng);
-  console.log(unassigned);
-  console.log(students[0]);
-  console.log(students[1]);
   log(`  → 未確定: ${unassigned.length} 名`, '');
-
-  students.forEach(s => {
-    console.log(s.id, s.method);
-  });
 
   // STEP 4: Random assignment for remaining (preference losers + no-response)
   // Separate into two groups so we can label them differently
   const prefLosers    = unassigned.filter(s => s.p1 || s.p2 || s.p3);
   const noResponders  = unassigned.filter(s => !s.p1 && !s.p2 && !s.p3);
-  console.log(prefLosers.length, prefLosers);
-  console.log(noResponders.length, noResponders);
   const allRandom = shuffle([...prefLosers, ...noResponders], rng);
 
   if (allRandom.length > 0) {
@@ -1103,7 +1087,6 @@ function tryAssign(candidates, pref, validClasses, remaining, rng) {
     shuffled.slice(0, cap).forEach(s => {
       s.assigned = cls;
       s.method = group.length > cap ? `${methodLabel}（抽選）` : methodLabel;
-      console.log(s.id.slice(0,8), s.method);
     });
     remaining[cls] -= Math.min(group.length, cap);
     shuffled.slice(cap).forEach(s => unplaced.push(s));
